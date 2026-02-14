@@ -1,0 +1,261 @@
+# ================================================================
+# TUKETBIR AIDAT VE YONETIM SISTEMI - APPLICATION CONFIGURATION
+# ================================================================
+
+spring:
+  application:
+    name: tuketbir-aidat-yonetim
+
+  # ================================================================
+  # DATABASE CONFIGURATION - PostgreSQL
+  # ================================================================
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5434/postgres
+    username: postgres
+    password: 8516
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: TuketbirHikariPool
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      connection-timeout: 30000
+      leak-detection-threshold: 60000
+
+  # ================================================================
+  # JPA / HIBERNATE CONFIGURATION
+  # ================================================================
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        use_sql_comments: true
+        jdbc:
+          batch_size: 50
+          batch_versioned_data: true
+        order_inserts: true
+        order_updates: true
+        default_schema: public
+    open-in-view: false
+
+  # ================================================================
+  # FLYWAY DATABASE MIGRATION - DISABLED
+  # ================================================================
+  flyway:
+    enabled: false
+
+  # ================================================================
+  # REDIS CACHE CONFIGURATION
+  # ================================================================
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: -1ms
+
+  # ================================================================
+  # SERVLET CONFIGURATION
+  # ================================================================
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 50MB
+
+  # ================================================================
+  # JACKSON JSON CONFIGURATION
+  # ================================================================
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Europe/Istanbul
+
+  # ================================================================
+  # MAIL CONFIGURATION
+  # ================================================================
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+# ================================================================
+# SERVER CONFIGURATION
+# ================================================================
+server:
+  port: 8081
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+    min-response-size: 1024
+  error:
+    include-message: always
+    include-binding-errors: always
+
+# ================================================================
+# SECURITY & JWT CONFIGURATION
+# ================================================================
+tuketbir:
+  security:
+    jwt:
+      secret-key: ${JWT_SECRET:tuketbir-aidat-yonetim-sistemi-super-secret-key-2026-minimum-256-bit-required-for-hs256}
+      access-token-expiration: 86400000     # 24 saat (ms) - geliştirme için uzatıldı
+      refresh-token-expiration: 604800000   # 7 gün (ms)
+    password:
+      expiry-days: 30
+      min-length: 8
+      require-uppercase: true
+      require-lowercase: true
+      require-digit: true
+      require-special: true
+    two-factor:
+      enabled: true
+      issuer: "Tuketbir Aidat Sistemi"
+
+  # ================================================================
+  # FILE STORAGE CONFIGURATION (MinIO)
+  # ================================================================
+  storage:
+    minio:
+      endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+      access-key: ${MINIO_ACCESS_KEY:}
+      secret-key: ${MINIO_SECRET_KEY:}
+      bucket-name: ${MINIO_BUCKET:tuketbir-documents}
+
+  # ================================================================
+  # BACKUP CONFIGURATION
+  # ================================================================
+  backup:
+    enabled: true
+    cron: "0 0 2 * * ?"  # Her gün saat 02:00
+    path: ${BACKUP_PATH:/var/backups/tuketbir}
+    retention-days: 30
+    encryption:
+      enabled: true
+      algorithm: AES-256-GCM
+
+  # ================================================================
+  # AUDIT CONFIGURATION
+  # ================================================================
+  audit:
+    enabled: true
+    retention-days: 365
+
+# ================================================================
+# LOGGING CONFIGURATION
+# ================================================================
+logging:
+  level:
+    root: INFO
+    tr.gov.tuketbir: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.flywaydb: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: ${LOG_PATH:/var/log/tuketbir}/tuketbir.log
+    max-size: 100MB
+    max-history: 30
+
+# ================================================================
+# ACTUATOR ENDPOINTS
+# ================================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+      base-path: /management
+    enabled-by-default: false
+  endpoint:
+    health:
+      enabled: true
+      show-details: when_authorized
+    info:
+      enabled: true
+  health:
+    db:
+      enabled: true
+    redis:
+      enabled: false
+  metrics:
+    enable:
+      all: false
+
+# ================================================================
+# SPRINGDOC / OPENAPI CONFIGURATION
+# ================================================================
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operations-sorter: alpha
+    tags-sorter: alpha
+  show-actuator: false
+
+---
+# ================================================================
+# DEVELOPMENT PROFILE
+# ================================================================
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: validate
+
+logging:
+  level:
+    tr.gov.tuketbir: DEBUG
+
+---
+# ================================================================
+# PRODUCTION PROFILE
+# ================================================================
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    root: WARN
+    tr.gov.tuketbir: INFO

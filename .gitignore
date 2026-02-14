@@ -1,0 +1,55 @@
+# ========================
+# Backend - Java / Maven
+# ========================
+backend/target/
+backend/*.jar
+backend/*.war
+backend/*.class
+
+# Maven
+backend/.mvn/
+backend/mvnw
+backend/mvnw.cmd
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+backend/logs/
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment / Config
+*.env
+*.env.local
+*.env.production
+
+# ========================
+# Frontend - Node / React
+# ========================
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.cache/
+
+# ========================
+# General
+# ========================
+*.pem
+*.key
+*.p12
+*.jks
+*.tmp
+*.bak
+
+# Test
+*.test.js.snap

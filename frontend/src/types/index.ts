@@ -398,6 +398,124 @@ export interface AidatRaporDto {
   gecikmisBorcSayisi: number
 }
 
+// ======================= Toplantı / Karar Types =======================
+
+export enum ToplantiTuru {
+  GENEL_KURUL = 'GENEL_KURUL',
+  YONETIM_KURULU = 'YONETIM_KURULU',
+  DENETIM_KURULU = 'DENETIM_KURULU',
+  OLAGAN_TOPLANTI = 'OLAGAN_TOPLANTI',
+  OLAGANUSTU_TOPLANTI = 'OLAGANUSTU_TOPLANTI',
+  DIGER = 'DIGER',
+}
+
+export enum ToplantiDurumu {
+  PLANLANMIS = 'PLANLANMIS',
+  DEVAM_EDIYOR = 'DEVAM_EDIYOR',
+  TAMAMLANDI = 'TAMAMLANDI',
+  IPTAL = 'IPTAL',
+  ERTELENDI = 'ERTELENDI',
+}
+
+export enum KararDurumu {
+  KABUL_EDILDI = 'KABUL_EDILDI',
+  REDDEDILDI = 'REDDEDILDI',
+  ERTELENDI = 'ERTELENDI',
+  UYGULAMADA = 'UYGULAMADA',
+  TAMAMLANDI = 'TAMAMLANDI',
+}
+
+export interface Toplanti {
+  id: number
+  toplantiNo: string
+  birlikId?: number
+  birlikAdi?: string
+  baslik: string
+  toplantiTuru: ToplantiTuru
+  durum: ToplantiDurumu
+  toplantiTarihi: string
+  baslangicSaati?: string
+  bitisSaati?: string
+  yer?: string
+  gundem?: string
+  aciklama?: string
+  kararSayisi: number
+  katilimciSayisi: number
+  kararlar?: Karar[]
+  katilimcilar?: ToplantiKatilimci[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Karar {
+  id: number
+  kararNo: string
+  toplantiId: number
+  toplantiNo?: string
+  kararSirasi: number
+  baslik: string
+  kararMetni: string
+  durum: KararDurumu
+  oyBirligi: boolean
+  kabulOyu?: number
+  redOyu?: number
+  cekimserOyu?: number
+  sorumlu?: string
+  notlar?: string
+  createdAt: string
+}
+
+export interface ToplantiKatilimci {
+  id: number
+  toplantiId: number
+  uyeId?: number
+  uyeNo?: string
+  adSoyad: string
+  gorev?: string
+  katildi: boolean
+  mazeret?: string
+  imzaladi: boolean
+}
+
+// ======================= Sistem / Audit Types =======================
+
+export interface AuditLog {
+  id: number
+  kullaniciAdi?: string
+  kullaniciId?: number
+  islemTipi: string
+  entityTipi?: string
+  entityId?: number
+  birlikId?: number
+  aciklama: string
+  ipAdresi?: string
+  requestUrl?: string
+  httpMetod?: string
+  basarili: boolean
+  hataMesaji?: string
+  islemZamani: string
+}
+
+export interface YedekBilgi {
+  dosyaAdi: string
+  dosyaBoyutu: number
+  dosyaBoyutuFormatli: string
+  olusturmaZamani: string
+  yedekTipi: string
+  basarili: boolean
+  aciklama?: string
+}
+
+export interface YedekDurum {
+  otomatikYedekAktif: boolean
+  yedekDizini: string
+  sonYedekTarihi?: string
+  sonYedekDosya?: string
+  toplamYedekSayisi: number
+  toplamBoyut: string
+  sonYedekler: YedekBilgi[]
+}
+
 // Form/Filter Types
 export interface UyeFilter {
   birlikId?: number
@@ -418,6 +536,14 @@ export interface AidatFilter {
 export interface GelirGiderFilter {
   birlikId?: number
   tip?: GelirGiderTipi
+  baslangicTarihi?: string
+  bitisTarihi?: string
+}
+
+export interface ToplantiFilter {
+  birlikId?: number
+  toplantiTuru?: ToplantiTuru
+  durum?: ToplantiDurumu
   baslangicTarihi?: string
   bitisTarihi?: string
 }

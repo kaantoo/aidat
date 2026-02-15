@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Aidat Service
@@ -132,6 +133,185 @@ public class AidatService {
             .stream()
             .map(aidatMapper::toDTO)
             .toList();
+    }
+
+    /**
+     * Dönem detayını ID ile getir
+     */
+    @Transactional(readOnly = true)
+    public AidatDonemiDTO getAidatDonemiById(Long id) {
+        AidatDonemi donem = aidatDonemiRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Aidat Dönemi", "id", id));
+        return aidatMapper.toDTO(donem);
+    }
+
+    /**
+     * Aidat dönemini güncelle
+     */
+    @Transactional
+    public AidatDonemiDTO updateAidatDonemi(Long id, AidatDonemiCreateRequest dto) {
+        AidatDonemi donem = aidatDonemiRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Aidat Dönemi", "id", id));
+
+        donem.setDonemAdi(dto.getDonemAdi());
+        donem.setDonemTipi(dto.getDonemTipi());
+        donem.setYil(dto.getYil());
+        donem.setBaslangicTarihi(dto.getBaslangicTarihi());
+        donem.setBitisTarihi(dto.getBitisTarihi());
+        donem.setSonOdemeTarihi(dto.getSonOdemeTarihi());
+        donem.setAciklama(dto.getAciklama());
+        if (dto.getTutar() != null) donem.setTutar(dto.getTutar());
+        if (dto.getMerkezPayOrani() != null) donem.setMerkezPayOrani(dto.getMerkezPayOrani());
+        if (dto.getGecikmeFaiziOrani() != null) donem.setGecikmeFaiziOrani(dto.getGecikmeFaiziOrani());
+        if (dto.getAsgariUcretAciklama() != null) donem.setAsgariUcretAciklama(dto.getAsgariUcretAciklama());
+
+        donem = aidatDonemiRepository.save(donem);
+        log.info("Aidat donemi updated: {}", donem.getDonemAdi());
+        return aidatMapper.toDTO(donem);
+    }
+
+    /**
+     * Aidat dönemini sil (soft delete)
+     */
+    @Transactional
+    public void deleteAidatDonemi(Long id) {
+        AidatDonemi donem = aidatDonemiRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Aidat Dönemi", "id", id));
+
+        // Döneme bağlı aidat var mı kontrol et
+        List<Aidat> bagliAidatlar = aidatRepository.findByAidatDonemiId(id);
+        if (!bagliAidatlar.isEmpty()) {
+            throw new BusinessException("Bu döneme bağlı " + bagliAidatlar.size() + " adet aidat kaydı bulunmaktadır. Önce aidatları silin.");
+        }
+
+        donem.setDonemAktif(false);
+        aidatDonemiRepository.save(donem);
+        log.info("Aidat donemi deleted (soft): {}", id);
+    }
+
+    /**
+     * Aidat detayını ID ile getir
+     */
+    @Transactional(readOnly = true)
+    public AidatDTO getAidatById(Long id) {
+        Aidat aidat = aidatRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Aidat", "id", id));
+        return aidatMapper.toDTO(aidat);
+    }
+
+    /**
+     * Belirli aidatın tahsilatlarını getir
+     */
+    @Transactional(readOnly = true)
+    public List<TahsilatDTO> getTahsilatlarByAidat(Long aidatId) {
+        return tahsilatRepository.findByAidatId(aidatId)
+            .stream()
+            .map(aidatMapper::toTahsilatDTO)
+            .toList();
+    }
+
+    /**
+     * Gecikme faizi hesapla ve güncelle
+     */
+    @Transactional
+    public Map<String, Object> calculateGecikmeFaizi(Long birlikId) {
+        List<Aidat> gecikmisBorclar;
+        if (birlikId != null) {
+            gecikmisBorclar = aidatRepository.findGecikmisBorclarByBirlik(birlikId, LocalDate.now());
+        } else {
+            gecikmisBorclar = aidatRepository.findGecikmisBorclar(LocalDate.now());
+        }
+
+        int guncellenen = 0;
+        BigDecimal toplamFaiz = BigDecimal.ZERO;
+
+        for (Aidat aidat : gecikmisBorclar) {
+            AidatDonemi donem = aidat.getAidatDonemi();
+            BigDecimal faiziOrani = donem.getGecikmeFaiziOrani();
+            if (faiziOrani == null || faiziOrani.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            long gecikmeGun = java.time.temporal.ChronoUnit.DAYS.between(aidat.getSonOdemeTarihi(), LocalDate.now());
+            if (gecikmeGun <= 0) continue;
+
+            // Günlük faiz oranı = yıllık oran / 365
+            BigDecimal gunlukOran = faiziOrani.divide(BigDecimal.valueOf(36500), 10, java.math.RoundingMode.HALF_UP);
+            BigDecimal faiz = aidat.getKalanBorc().multiply(gunlukOran).multiply(BigDecimal.valueOf(gecikmeGun));
+            faiz = faiz.setScale(2, java.math.RoundingMode.HALF_UP);
+
+            aidat.setGecikmeFaizi(faiz);
+            aidat.setToplamBorc(aidat.getTahakkukTutari().add(faiz));
+            aidat.setKalanBorc(aidat.getToplamBorc().subtract(aidat.getOdenenTutar()));
+            aidat.setAidatDurum(AidatDurum.GECIKTI);
+            aidatRepository.save(aidat);
+
+            toplamFaiz = toplamFaiz.add(faiz);
+            guncellenen++;
+        }
+
+        log.info("Gecikme faizi hesaplandı: {} aidat güncellendi, toplam faiz: {}", guncellenen, toplamFaiz);
+        return Map.of(
+            "guncellelenAidatSayisi", guncellenen,
+            "toplamGecikmisBorcSayisi", gecikmisBorclar.size(),
+            "toplamFaiz", toplamFaiz
+        );
+    }
+
+    /**
+     * Aidat listesini Excel'e aktar
+     */
+    @Transactional(readOnly = true)
+    public byte[] exportAidatlarToExcel(AidatSearchRequest searchRequest) {
+        List<Aidat> aidatlar;
+        if (searchRequest.getBirlikId() != null) {
+            aidatlar = aidatRepository.findByBirlikId(searchRequest.getBirlikId());
+        } else {
+            aidatlar = aidatRepository.findAll();
+        }
+
+        try (var workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+            var sheet = workbook.createSheet("Aidatlar");
+
+            // Header style
+            var headerStyle = workbook.createCellStyle();
+            var headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+
+            // Header row
+            var headerRow = sheet.createRow(0);
+            String[] headers = {"Üye No", "Üye Ad Soyad", "Dönem", "Tahakkuk", "Ödenen", "Kalan", "Durum", "Son Ödeme Tarihi"};
+            for (int i = 0; i < headers.length; i++) {
+                var cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // Data rows
+            int rowIdx = 1;
+            for (Aidat aidat : aidatlar) {
+                var row = sheet.createRow(rowIdx++);
+                row.createCell(0).setCellValue(aidat.getUye() != null ? aidat.getUye().getUyeNo() : "");
+                row.createCell(1).setCellValue(aidat.getUye() != null ? aidat.getUye().getAd() + " " + aidat.getUye().getSoyad() : "");
+                row.createCell(2).setCellValue(aidat.getAidatDonemi() != null ? aidat.getAidatDonemi().getDonemAdi() : "");
+                row.createCell(3).setCellValue(aidat.getTahakkukTutari() != null ? aidat.getTahakkukTutari().doubleValue() : 0);
+                row.createCell(4).setCellValue(aidat.getOdenenTutar() != null ? aidat.getOdenenTutar().doubleValue() : 0);
+                row.createCell(5).setCellValue(aidat.getKalanBorc() != null ? aidat.getKalanBorc().doubleValue() : 0);
+                row.createCell(6).setCellValue(aidat.getAidatDurum() != null ? aidat.getAidatDurum().name() : "");
+                row.createCell(7).setCellValue(aidat.getSonOdemeTarihi() != null ? aidat.getSonOdemeTarihi().toString() : "");
+            }
+
+            // Auto-size columns
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            var outputStream = new java.io.ByteArrayOutputStream();
+            workbook.write(outputStream);
+            return outputStream.toByteArray();
+        } catch (Exception e) {
+            log.error("Error exporting aidatlar to Excel", e);
+            throw new BusinessException("Excel dosyası oluşturulurken hata oluştu: " + e.getMessage());
+        }
     }
 
     /**

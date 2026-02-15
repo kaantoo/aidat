@@ -16,6 +16,7 @@ import {
   SettingOutlined,
   LogoutOutlined,
   CheckOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
@@ -191,6 +192,13 @@ const MainLayout: React.FC = () => {
       key: '/belgeler',
       icon: <FileOutlined />,
       label: 'Belgeler',
+    })
+
+    // Toplantı Yönetimi
+    items.push({
+      key: '/toplantilar',
+      icon: <CalendarOutlined />,
+      label: 'Toplantılar',
     })
 
     // Kullanıcı yönetimi - sadece yöneticiler

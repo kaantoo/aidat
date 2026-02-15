@@ -394,7 +394,7 @@ public class AuthenticationService {
         kullanici.setTokenGecerlilikZamani(LocalDateTime.now().plusHours(24));
         kullaniciRepository.save(kullanici);
         
-        // TODO: E-posta gönderimi - şimdilik log'a yazdır
+        // NOT: E-posta servisi entegre edildiğinde burada reset linki kullanıcıya e-posta ile gönderilecek
         log.info("PASSWORD RESET TOKEN for {}: {}", email, resetToken);
         log.info("Reset URL: http://localhost:5175/reset-password?token={}", resetToken);
         

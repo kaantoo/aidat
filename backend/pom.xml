@@ -24,8 +24,9 @@
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <springdoc.version>2.3.0</springdoc.version>
         <testcontainers.version>1.19.3</testcontainers.version>
-        <minio.version>8.5.7</minio.version>
-        <poi.version>5.2.5</poi.version>
+        <postgresql.version>42.7.8</postgresql.version>
+        <minio.version>8.6.0</minio.version>
+        <poi.version>5.4.0</poi.version>
         <itext.version>8.0.2</itext.version>
     </properties>
     

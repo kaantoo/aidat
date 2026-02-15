@@ -44,6 +44,11 @@ import RaporlarPage from '@/pages/rapor/RaporlarPage'
 // Sistem Yönetimi
 import SistemYonetimiPage from '@/pages/sistem/SistemYonetimiPage'
 
+// Toplantı
+import ToplantiListPage from '@/pages/toplanti/ToplantiListPage'
+import ToplantiDetailPage from '@/pages/toplanti/ToplantiDetailPage'
+import ToplantiFormPage from '@/pages/toplanti/ToplantiFormPage'
+
 // Profil
 import ProfilPage from '@/pages/profil/ProfilPage'
 
@@ -161,6 +166,12 @@ const AppRoutes: React.FC = () => {
 
         {/* Sistem Yönetimi - Sadece SISTEM_ADMIN */}
         <Route path="/sistem-yonetimi" element={<SistemYonetimiPage />} />
+
+        {/* Toplantı */}
+        <Route path="/toplantilar" element={<ToplantiListPage />} />
+        <Route path="/toplantilar/yeni" element={<ToplantiFormPage />} />
+        <Route path="/toplantilar/:id" element={<ToplantiDetailPage />} />
+        <Route path="/toplantilar/:id/duzenle" element={<ToplantiFormPage />} />
 
         {/* Profil */}
         <Route path="/profil" element={<ProfilPage />} />

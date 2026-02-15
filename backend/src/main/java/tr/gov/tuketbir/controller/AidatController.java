@@ -54,8 +54,8 @@ public class AidatController {
     @PreAuthorize("hasAnyAuthority('PERM_AIDAT_READ')")
     public ResponseEntity<ApiResponse<AidatDonemiDTO>> getDonemById(@PathVariable Long id) {
         log.info("Getting aidat donemi by id: {}", id);
-        // TODO: Add getAidatDonemiById method to service
-        return ResponseEntity.ok(ApiResponse.success(null, "Dönem bulunamadı"));
+        AidatDonemiDTO response = aidatService.getAidatDonemiById(id);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @PostMapping("/donemler")
@@ -78,8 +78,8 @@ public class AidatController {
             @Valid @RequestBody AidatDonemiCreateRequest request) {
         
         log.info("Updating aidat donemi: {}", id);
-        // TODO: Add updateAidatDonemi method to service
-        return ResponseEntity.ok(ApiResponse.success(null, "Dönem güncellendi"));
+        AidatDonemiDTO response = aidatService.updateAidatDonemi(id, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "Dönem güncellendi"));
     }
 
     @DeleteMapping("/donemler/{id}")
@@ -87,7 +87,7 @@ public class AidatController {
     @PreAuthorize("hasAnyAuthority('PERM_AIDAT_DELETE')")
     public ResponseEntity<ApiResponse<Void>> deleteDonem(@PathVariable Long id) {
         log.info("Deleting aidat donemi: {}", id);
-        // TODO: Add deleteAidatDonemi method to service
+        aidatService.deleteAidatDonemi(id);
         return ResponseEntity.ok(ApiResponse.success(null, "Aidat dönemi silindi"));
     }
 
@@ -114,8 +114,8 @@ public class AidatController {
     @PreAuthorize("hasAnyAuthority('PERM_AIDAT_READ')")
     public ResponseEntity<ApiResponse<AidatDTO>> getAidatById(@PathVariable Long id) {
         log.info("Getting aidat by id: {}", id);
-        // TODO: Add getAidatById method to service
-        return ResponseEntity.ok(ApiResponse.success(null));
+        AidatDTO response = aidatService.getAidatById(id);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @GetMapping("/uye/{uyeId}")
@@ -177,8 +177,8 @@ public class AidatController {
     @PreAuthorize("hasAnyAuthority('PERM_TAHSILAT_READ')")
     public ResponseEntity<ApiResponse<List<TahsilatDTO>>> getTahsilatlar(@PathVariable Long aidatId) {
         log.info("Getting tahsilatlar for aidat: {}", aidatId);
-        // TODO: Add getTahsilatlarByAidat method to service
-        return ResponseEntity.ok(ApiResponse.success(List.of()));
+        List<TahsilatDTO> response = aidatService.getTahsilatlarByAidat(aidatId);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @PostMapping("/tahsilat")
@@ -247,8 +247,7 @@ public class AidatController {
             @RequestParam(required = false) Long birlikId) {
         
         log.info("Calculating gecikme faizi - birlikId: {}", birlikId);
-        // TODO: Implement calculateGecikmeFaizi in service
-        Map<String, Object> result = Map.of("message", "Gecikme faizi hesaplama henüz uygulanmadı");
+        Map<String, Object> result = aidatService.calculateGecikmeFaizi(birlikId);
         return ResponseEntity.ok(ApiResponse.success(result, "Gecikme faizi hesaplandı"));
     }
 
@@ -259,8 +258,7 @@ public class AidatController {
             @ModelAttribute AidatSearchRequest searchRequest) {
         
         log.info("Exporting aidatlar to Excel");
-        // TODO: Implement exportToExcel in service
-        byte[] excelData = new byte[0];
+        byte[] excelData = aidatService.exportAidatlarToExcel(searchRequest);
         
         return ResponseEntity.ok()
                 .header("Content-Disposition", "attachment; filename=aidatlar.xlsx")

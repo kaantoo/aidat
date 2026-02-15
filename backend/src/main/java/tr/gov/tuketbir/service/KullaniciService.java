@@ -217,7 +217,7 @@ public class KullaniciService {
         kullanici.setSonSifreDegisim(LocalDateTime.now());
         kullaniciRepository.save(kullanici);
 
-        // TODO: E-posta ile yeni şifreyi gönder
+        // NOT: E-posta servisi entegre edildiğinde burada yeni şifre kullanıcıya e-posta ile gönderilecek
         log.info("Password reset for kullanici: {} - New password: {}", id, newPassword);
     }
 

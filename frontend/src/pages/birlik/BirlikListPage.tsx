@@ -25,7 +25,7 @@ import { Birlik, BirlikTipi } from '@/types'
 
 const BirlikListPage: React.FC = () => {
   const navigate = useNavigate()
-  const [_searchTerm, setSearchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const { message } = App.useApp()
   const {
     birlikler,
@@ -41,9 +41,18 @@ const BirlikListPage: React.FC = () => {
     fetchBirlikler()
   }, [fetchBirlikler])
 
+  // Client-side filtreleme
+  const filteredBirlikler = searchTerm.trim()
+    ? birlikler.filter(
+        (b) =>
+          b.birlikAdi?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          b.birlikKodu?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          b.ilKodu?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : birlikler
+
   const handleSearch = (value: string) => {
     setSearchTerm(value)
-    // TODO: Implement search
   }
 
   const handleTableChange = (pagination: TablePaginationConfig) => {
@@ -183,13 +192,13 @@ const BirlikListPage: React.FC = () => {
 
         <Table
           columns={columns}
-          dataSource={birlikler}
+          dataSource={filteredBirlikler}
           rowKey="id"
           loading={isLoading}
           pagination={{
             current: (currentPage || 0) + 1,
             pageSize: pageSize || 20,
-            total: totalElements || 0,
+            total: searchTerm.trim() ? filteredBirlikler.length : (totalElements || 0),
             showSizeChanger: true,
             showTotal: (total) => `Toplam ${total} birlik`,
           }}

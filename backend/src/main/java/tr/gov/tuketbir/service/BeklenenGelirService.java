@@ -118,7 +118,7 @@ public class BeklenenGelirService {
                 .tahsilatOrani(tahsilatOrani)
                 .merkezPayOrani(payOrani)
                 .merkezeBeklenenPay(merkezeBeklenenPay)
-                .merekzeAktarilanPay(BigDecimal.ZERO) // TODO: Merkeze aktarım takibi
+                .merekzeAktarilanPay(BigDecimal.ZERO) // Merkeze aktarım kaydı henüz ayrı entity olarak takip edilmiyor
                 .build();
     }
 

@@ -216,4 +216,34 @@ export const aidatApi = {
     })
     return response.data
   },
+
+  // Aidat (Borç) Excel Import
+  downloadAidatImportTemplate: async (): Promise<Blob> => {
+    const response = await api.get('/aidatlar/import/template', {
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
+  importAidatlarFromExcel: async (
+    file: File,
+    birlikId?: number
+  ): Promise<ApiResponse<{
+    basarili: number
+    atlanan: number
+    hatali: number
+    toplam: number
+    hatalar: string[]
+    uyarilar: string[]
+  }>> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (birlikId) {
+      formData.append('birlikId', birlikId.toString())
+    }
+    const response = await api.post('/aidatlar/import/excel', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
 }

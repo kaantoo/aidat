@@ -305,4 +305,43 @@ public class AidatController {
         int basarili = (int) result.get("basarili");
         return ResponseEntity.ok(ApiResponse.success(result, basarili + " dönem başarıyla import edildi"));
     }
+
+    // ==================== Aidat (Borç) Excel Import İşlemleri ====================
+
+    @GetMapping("/import/template")
+    @Operation(summary = "Aidat borç import şablonu", description = "Aidat borç import şablon dosyasını indir")
+    @PreAuthorize("hasAnyAuthority('PERM_AIDAT_CREATE')")
+    public ResponseEntity<byte[]> downloadAidatImportTemplate() {
+        log.info("Downloading aidat import template");
+        byte[] template = aidatService.generateAidatImportTemplate();
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=aidat_borc_import_sablonu.xlsx")
+                .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .body(template);
+    }
+
+    @PostMapping("/import/excel")
+    @Operation(summary = "Excel'den aidat borç import", description = "Excel dosyasından toplu aidat borcu tanımlama")
+    @PreAuthorize("hasAnyAuthority('PERM_AIDAT_CREATE')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> importAidatlarFromExcel(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "birlikId", required = false) Long birlikId) {
+        
+        log.info("Importing aidatlar from Excel, birlikId: {}", birlikId);
+        
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Dosya boş"));
+        }
+        
+        String filename = file.getOriginalFilename();
+        if (filename == null || (!filename.endsWith(".xlsx") && !filename.endsWith(".xls"))) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Geçersiz dosya formatı. Sadece .xlsx ve .xls kabul edilir"));
+        }
+        
+        Map<String, Object> result = aidatService.importAidatlarFromExcel(file, birlikId);
+        int basarili = (int) result.get("basarili");
+        return ResponseEntity.ok(ApiResponse.success(result, basarili + " aidat borcu başarıyla import edildi"));
+    }
 }

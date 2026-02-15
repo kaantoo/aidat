@@ -999,6 +999,307 @@ public class AidatService {
         return result;
     }
 
+    // ======================= Aidat (Borç) Excel Import İşlemleri =======================
+
+    /**
+     * Excel şablon dosyası oluştur (aidat/borç import için)
+     * Hem üye bazlı hem birlik bazlı borçlar import edilebilir
+     */
+    public byte[] generateAidatImportTemplate() {
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Aidat Borç Şablonu");
+
+            // Header stili
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 11);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setBorderBottom(BorderStyle.THIN);
+
+            // Açıklama stili
+            CellStyle infoStyle = workbook.createCellStyle();
+            Font infoFont = workbook.createFont();
+            infoFont.setItalic(true);
+            infoFont.setColor(IndexedColors.GREY_50_PERCENT.getIndex());
+            infoStyle.setFont(infoFont);
+
+            // Zorunlu alan kırmızı stili
+            CellStyle requiredStyle = workbook.createCellStyle();
+            Font requiredFont = workbook.createFont();
+            requiredFont.setItalic(true);
+            requiredFont.setColor(IndexedColors.RED.getIndex());
+            requiredStyle.setFont(requiredFont);
+
+            // Header
+            String[] headers = {
+                "Üye No*", "Dönem Kodu*", "Tahakkuk Tutarı*", "Ödenen Tutar",
+                "Gecikme Faizi", "Son Ödeme Tarihi", "Durum", "Açıklama"
+            };
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // Açıklama satırları
+            String[] explanations = {
+                "Üye numarası (zorunlu)", "Dönem kodu (DB'deki, ör: 2024-YILLIK)", "Aidat tutarı (zorunlu, ör: 1500.00)",
+                "Ödenen tutar (opsiyonel, ör: 500.00)", "Gecikme faizi (opsiyonel, ör: 100.00)",
+                "GG.AA.YYYY (opsiyonel, boşsa dönem son ödeme tarihi)", "BEKLIYOR/KISMI_ODENDI/ODENDI/GECIKTI/IPTAL (opsiyonel)",
+                "İsteğe bağlı açıklama"
+            };
+            Row infoRow = sheet.createRow(1);
+            for (int i = 0; i < explanations.length; i++) {
+                Cell cell = infoRow.createCell(i);
+                cell.setCellValue(explanations[i]);
+                cell.setCellStyle(infoStyle);
+            }
+
+            // Örnek veri satırları
+            Row ex1 = sheet.createRow(2);
+            ex1.createCell(0).setCellValue("UYE-001");
+            ex1.createCell(1).setCellValue("2024-YILLIK");
+            ex1.createCell(2).setCellValue(1500.00);
+            ex1.createCell(3).setCellValue(1500.00);
+            ex1.createCell(4).setCellValue(0);
+            ex1.createCell(5).setCellValue("31.03.2024");
+            ex1.createCell(6).setCellValue("ODENDI");
+            ex1.createCell(7).setCellValue("2024 yılı aidatı");
+
+            Row ex2 = sheet.createRow(3);
+            ex2.createCell(0).setCellValue("UYE-002");
+            ex2.createCell(1).setCellValue("2024-YILLIK");
+            ex2.createCell(2).setCellValue(1500.00);
+            ex2.createCell(3).setCellValue(750.00);
+            ex2.createCell(4).setCellValue(50.00);
+            ex2.createCell(5).setCellValue("31.03.2024");
+            ex2.createCell(6).setCellValue("KISMI_ODENDI");
+            ex2.createCell(7).setCellValue("Yarısı ödendi");
+
+            Row ex3 = sheet.createRow(4);
+            ex3.createCell(0).setCellValue("UYE-003");
+            ex3.createCell(1).setCellValue("2024-YILLIK");
+            ex3.createCell(2).setCellValue(1500.00);
+            ex3.createCell(3).setCellValue(0);
+            ex3.createCell(4).setCellValue(200.00);
+            ex3.createCell(5).setCellValue("31.03.2024");
+            ex3.createCell(6).setCellValue("GECIKTI");
+            ex3.createCell(7).setCellValue("Ödenmedi, gecikme faizi uygulandı");
+
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            workbook.write(outputStream);
+            return outputStream.toByteArray();
+        } catch (Exception e) {
+            log.error("Error generating aidat import template", e);
+            throw new BusinessException("Şablon dosyası oluşturulurken hata oluştu");
+        }
+    }
+
+    /**
+     * Excel'den aidat (borç) kayıtlarını toplu import et.
+     * Üye No ve Dönem Kodu ile eşleştirme yapılır.
+     * Birlik bilgisi üyenin birliğinden otomatik alınır.
+     */
+    @Transactional
+    public Map<String, Object> importAidatlarFromExcel(MultipartFile file, Long defaultBirlikId) {
+        log.info("Importing aidatlar (borçlar) from Excel, defaultBirlikId: {}", defaultBirlikId);
+
+        List<String> errors = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        int successCount = 0;
+        int skippedCount = 0;
+        int rowNumber = 0;
+
+        DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+
+        // Dönem cache (aynı dönem kodu tekrar aranmasın)
+        Map<String, AidatDonemi> donemCache = new HashMap<>();
+        // Üye cache
+        Map<String, Uye> uyeCache = new HashMap<>();
+
+        try (InputStream is = file.getInputStream();
+             Workbook workbook = WorkbookFactory.create(is)) {
+
+            Sheet sheet = workbook.getSheetAt(0);
+            int lastRowNum = sheet.getLastRowNum();
+
+            // İlk 2 satır header+açıklama, 3. satırdan itibaren veri
+            for (int i = 2; i <= lastRowNum; i++) {
+                Row row = sheet.getRow(i);
+                rowNumber = i + 1; // 1-based for user display
+
+                if (row == null || isRowEmpty(row)) {
+                    continue;
+                }
+
+                try {
+                    String uyeNo = getCellStringValue(row.getCell(0));
+                    String donemKodu = getCellStringValue(row.getCell(1));
+                    BigDecimal tahakkukTutari = getCellBigDecimalValue(row.getCell(2));
+                    BigDecimal odenenTutar = getCellBigDecimalValue(row.getCell(3));
+                    BigDecimal gecikmeFaizi = getCellBigDecimalValue(row.getCell(4));
+                    String sonOdemeStr = getCellStringValue(row.getCell(5));
+                    String durumStr = getCellStringValue(row.getCell(6));
+                    String aciklama = getCellStringValue(row.getCell(7));
+
+                    // Zorunlu alan validasyonu
+                    List<String> rowErrors = new ArrayList<>();
+                    if (uyeNo == null || uyeNo.isBlank()) rowErrors.add("Üye No boş");
+                    if (donemKodu == null || donemKodu.isBlank()) rowErrors.add("Dönem Kodu boş");
+                    if (tahakkukTutari == null || tahakkukTutari.compareTo(BigDecimal.ZERO) <= 0) {
+                        rowErrors.add("Tahakkuk tutarı boş veya sıfır");
+                    }
+
+                    if (!rowErrors.isEmpty()) {
+                        errors.add("Satır " + rowNumber + ": " + String.join(", ", rowErrors));
+                        continue;
+                    }
+
+                    // Üye bul (cache'den veya DB'den)
+                    Uye uye = uyeCache.get(uyeNo.trim());
+                    if (uye == null) {
+                        uye = uyeRepository.findByUyeNo(uyeNo.trim()).orElse(null);
+                        if (uye != null) {
+                            uyeCache.put(uyeNo.trim(), uye);
+                        }
+                    }
+                    if (uye == null) {
+                        errors.add("Satır " + rowNumber + ": Üye bulunamadı, Üye No: " + uyeNo);
+                        continue;
+                    }
+
+                    // Birlik filtreleme: defaultBirlikId verilmişse, üye o birliğe ait mi?
+                    if (defaultBirlikId != null && !defaultBirlikId.equals(uye.getBirlik().getId())) {
+                        warnings.add("Satır " + rowNumber + ": Üye '" + uyeNo + "' seçilen birliğe ait değil, atlandı");
+                        skippedCount++;
+                        continue;
+                    }
+
+                    // Dönem bul (cache'den veya DB'den)
+                    AidatDonemi donem = donemCache.get(donemKodu.trim());
+                    if (donem == null) {
+                        donem = aidatDonemiRepository.findByDonemKodu(donemKodu.trim()).orElse(null);
+                        if (donem != null) {
+                            donemCache.put(donemKodu.trim(), donem);
+                        }
+                    }
+                    if (donem == null) {
+                        errors.add("Satır " + rowNumber + ": Dönem bulunamadı, Dönem Kodu: " + donemKodu);
+                        continue;
+                    }
+
+                    // Mükerrer kontrolü
+                    if (aidatRepository.existsByUyeIdAndAidatDonemiId(uye.getId(), donem.getId())) {
+                        warnings.add("Satır " + rowNumber + ": Üye '" + uyeNo + "' için '" + donemKodu + "' dönemi zaten mevcut, atlandı");
+                        skippedCount++;
+                        continue;
+                    }
+
+                    // Son ödeme tarihi
+                    LocalDate sonOdemeTarihi = donem.getSonOdemeTarihi();
+                    if (sonOdemeStr != null && !sonOdemeStr.isBlank()) {
+                        try {
+                            sonOdemeTarihi = LocalDate.parse(sonOdemeStr.trim(), dateFormat);
+                        } catch (Exception e) {
+                            warnings.add("Satır " + rowNumber + ": Son ödeme tarihi formatı hatalı, dönem tarihi kullanıldı");
+                        }
+                    }
+
+                    // Durum parse
+                    AidatDurum durum = AidatDurum.BEKLIYOR;
+                    if (durumStr != null && !durumStr.isBlank()) {
+                        try {
+                            durum = AidatDurum.valueOf(durumStr.trim().toUpperCase());
+                        } catch (IllegalArgumentException e) {
+                            warnings.add("Satır " + rowNumber + ": Geçersiz durum '" + durumStr + "', BEKLIYOR olarak ayarlandı");
+                        }
+                    }
+
+                    // Varsayılan değerler
+                    if (odenenTutar == null) odenenTutar = BigDecimal.ZERO;
+                    if (gecikmeFaizi == null) gecikmeFaizi = BigDecimal.ZERO;
+
+                    // Durumu otomatik hesapla (eğer Excel'de belirtilmediyse)
+                    if (durumStr == null || durumStr.isBlank()) {
+                        if (odenenTutar.compareTo(BigDecimal.ZERO) == 0) {
+                            if (sonOdemeTarihi != null && sonOdemeTarihi.isBefore(LocalDate.now())) {
+                                durum = AidatDurum.GECIKTI;
+                            } else {
+                                durum = AidatDurum.BEKLIYOR;
+                            }
+                        } else if (odenenTutar.compareTo(tahakkukTutari.add(gecikmeFaizi)) >= 0) {
+                            durum = AidatDurum.ODENDI;
+                        } else {
+                            durum = AidatDurum.KISMI_ODENDI;
+                        }
+                    }
+
+                    // toplamBorc ve kalanBorc hesapla
+                    BigDecimal toplamBorc = tahakkukTutari.add(gecikmeFaizi);
+                    BigDecimal kalanBorc = toplamBorc.subtract(odenenTutar);
+                    if (kalanBorc.compareTo(BigDecimal.ZERO) < 0) kalanBorc = BigDecimal.ZERO;
+
+                    // Ödeme tamamlanma tarihi
+                    LocalDateTime odemeTamamlanmaTarihi = null;
+                    if (durum == AidatDurum.ODENDI) {
+                        odemeTamamlanmaTarihi = sonOdemeTarihi != null ? sonOdemeTarihi.atStartOfDay() : LocalDateTime.now();
+                    }
+
+                    // Entity oluştur
+                    Aidat aidat = Aidat.builder()
+                        .uye(uye)
+                        .aidatDonemi(donem)
+                        .birlik(uye.getBirlik())
+                        .tahakkukTarihi(donem.getBaslangicTarihi() != null ? donem.getBaslangicTarihi() : LocalDate.now())
+                        .tahakkukTutari(tahakkukTutari)
+                        .gecikmeFaizi(gecikmeFaizi)
+                        .toplamBorc(toplamBorc)
+                        .odenenTutar(odenenTutar)
+                        .kalanBorc(kalanBorc)
+                        .aidatDurum(durum)
+                        .sonOdemeTarihi(sonOdemeTarihi)
+                        .odemeTamamlanmaTarihi(odemeTamamlanmaTarihi)
+                        .aciklama(aciklama)
+                        .build();
+
+                    aidat.setTenantId(uye.getBirlik().getId());
+                    aidatRepository.save(aidat);
+                    successCount++;
+
+                    log.debug("Imported aidat: uyeNo={}, donemKodu={}, tutar={}", uyeNo, donemKodu, tahakkukTutari);
+
+                } catch (Exception e) {
+                    errors.add("Satır " + rowNumber + ": Beklenmeyen hata - " + e.getMessage());
+                    log.error("Error importing aidat row {}", rowNumber, e);
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Error reading Excel file for aidat import", e);
+            throw new BusinessException("Excel dosyası okunamadı: " + e.getMessage());
+        }
+
+        auditLogService.log("AIDAT_EXCEL_IMPORT",
+            String.format("Excel'den %d aidat borcu import edildi (%d atlandı, %d hata)", successCount, skippedCount, errors.size()));
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("basarili", successCount);
+        result.put("atlanan", skippedCount);
+        result.put("hatali", errors.size());
+        result.put("toplam", successCount + skippedCount + errors.size());
+        result.put("hatalar", errors);
+        result.put("uyarilar", warnings);
+        return result;
+    }
+
     // ======================= Excel Yardımcı Metodlar =======================
 
     private boolean isRowEmpty(Row row) {

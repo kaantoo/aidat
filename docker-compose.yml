@@ -82,7 +82,7 @@ services:
       MINIO_SECRET_KEY: tuketbir_minio_2024
       MINIO_BUCKET: tuketbir-documents
     ports:
-      - "8080:8080"
+      - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy

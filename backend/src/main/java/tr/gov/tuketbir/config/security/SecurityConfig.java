@@ -81,37 +81,54 @@ public class SecurityConfig {
                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                 
                 // Merkez Yönetici - tüm erişim
-                .requestMatchers("/v1/admin/**").hasRole("MERKEZ_YONETICI")
-                .requestMatchers("/v1/sistem/**").hasRole("MERKEZ_YONETICI")
+                .requestMatchers("/api/v1/admin/**").hasRole("MERKEZ_YONETICI")
+                .requestMatchers("/api/v1/sistem/**").hasRole("MERKEZ_YONETICI")
                 
                 // Birlik yönetimi
-                .requestMatchers("/v1/birlik/**").hasAnyRole("MERKEZ_YONETICI", "BIRLIK_YONETICI")
+                .requestMatchers("/api/v1/birlik/**").hasAnyRole("MERKEZ_YONETICI", "BIRLIK_YONETICI")
                 
                 // Üye yönetimi
-                .requestMatchers("/v1/uye/**").hasAnyRole(
+                .requestMatchers("/api/v1/uye/**").hasAnyRole(
                     "MERKEZ_YONETICI", "BIRLIK_YONETICI", "BIRLIK_PERSONEL", "MUHASEBE_SORUMLU"
                 )
                 
                 // Aidat yönetimi
-                .requestMatchers("/v1/aidat/**").hasAnyRole(
+                .requestMatchers("/api/v1/aidat/**").hasAnyRole(
                     "MERKEZ_YONETICI", "BIRLIK_YONETICI", "MUHASEBE_SORUMLU"
                 )
                 
                 // Tahsilat yönetimi
-                .requestMatchers("/v1/tahsilat/**").hasAnyRole(
+                .requestMatchers("/api/v1/tahsilat/**").hasAnyRole(
                     "MERKEZ_YONETICI", "BIRLIK_YONETICI", "BIRLIK_PERSONEL", "MUHASEBE_SORUMLU"
                 )
                 
                 // Gelir-Gider yönetimi
-                .requestMatchers("/v1/gelir-gider/**").hasAnyRole(
-                    "MERKEZ_YONETICI", "BIRLIK_YONETICI", "MUHASEBE_SORUMLO"
+                .requestMatchers("/api/v1/gelir-gider/**").hasAnyRole(
+                    "MERKEZ_YONETICI", "BIRLIK_YONETICI", "MUHASEBE_SORUMLU"
+                )
+                
+                // Toplantı ve Karar yönetimi
+                .requestMatchers("/api/v1/toplantilar/**").hasAnyRole(
+                    "MERKEZ_YONETICI", "BIRLIK_YONETICI"
                 )
                 
                 // Belge yönetimi
-                .requestMatchers("/v1/belge/**").authenticated()
+                .requestMatchers("/api/v1/belge/**").authenticated()
                 
                 // Raporlar
-                .requestMatchers("/v1/rapor/**").authenticated()
+                .requestMatchers("/api/v1/rapor/**").authenticated()
+                
+                // Kullanıcı yönetimi
+                .requestMatchers("/api/v1/kullanici/**").authenticated()
+                
+                // Bildirimler
+                .requestMatchers("/api/v1/bildirim/**").authenticated()
+                
+                // Dashboard
+                .requestMatchers("/api/v1/dashboard/**").authenticated()
+                
+                // Profil
+                .requestMatchers("/api/v1/profil/**").authenticated()
                 
                 // Diğer tüm istekler authentication gerektirir
                 .anyRequest().authenticated()

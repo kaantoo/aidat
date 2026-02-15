@@ -196,15 +196,20 @@ public class Aidat extends BaseEntity {
     @PrePersist
     @PreUpdate
     private void calculateTotals() {
+        if (this.tahakkukTutari == null) {
+            this.tahakkukTutari = BigDecimal.ZERO;
+        }
+        if (this.gecikmeFaizi == null) {
+            this.gecikmeFaizi = BigDecimal.ZERO;
+        }
+        if (this.odenenTutar == null) {
+            this.odenenTutar = BigDecimal.ZERO;
+        }
         if (this.toplamBorc == null) {
-            this.toplamBorc = this.tahakkukTutari.add(
-                this.gecikmeFaizi != null ? this.gecikmeFaizi : BigDecimal.ZERO
-            );
+            this.toplamBorc = this.tahakkukTutari.add(this.gecikmeFaizi);
         }
         if (this.kalanBorc == null) {
-            this.kalanBorc = this.toplamBorc.subtract(
-                this.odenenTutar != null ? this.odenenTutar : BigDecimal.ZERO
-            );
+            this.kalanBorc = this.toplamBorc.subtract(this.odenenTutar);
         }
     }
 }

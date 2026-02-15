@@ -125,6 +125,12 @@ public class DonemEventListener {
             return;
         }
         
+        // Tutar null ise (merkez birlik dönemi) aidat tahakkuk yapılamaz
+        if (donem.getTutar() == null || donem.getTutar().compareTo(BigDecimal.ZERO) <= 0) {
+            log.warn("Donem tutar is null or zero, skipping uye tahakkuk: {}", donem.getDonemAdi());
+            return;
+        }
+        
         Long birlikId = donem.getBirlik().getId();
         log.info("Creating aidat tahakkuk for birlik: {} donem: {}", 
             donem.getBirlik().getBirlikAdi(), donem.getDonemAdi());

@@ -354,6 +354,12 @@ public class AidatService {
             birlik = null;
         }
         
+        // Tutar null kontrolü (merkez birlik dönemleri için tutar olmayabilir)
+        BigDecimal tahakkukTutari = donem.getTutar() != null ? donem.getTutar() : BigDecimal.ZERO;
+        if (tahakkukTutari.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("Aidat tutarı belirlenemeyen döneme toplu atama yapılamaz. Lütfen dönem tutarını belirleyin.");
+        }
+        
         int success = 0;
         int skipped = 0;
         
@@ -371,9 +377,9 @@ public class AidatService {
                 .aidatDonemi(donem)
                 .birlik(uyeBirlik)
                 .tahakkukTarihi(LocalDate.now())
-                .tahakkukTutari(donem.getTutar())
-                .toplamBorc(donem.getTutar())
-                .kalanBorc(donem.getTutar())
+                .tahakkukTutari(tahakkukTutari)
+                .toplamBorc(tahakkukTutari)
+                .kalanBorc(tahakkukTutari)
                 .odenenTutar(BigDecimal.ZERO)
                 .gecikmeFaizi(BigDecimal.ZERO)
                 .aidatDurum(AidatDurum.BEKLIYOR)
@@ -411,14 +417,20 @@ public class AidatService {
             throw new BusinessException("Bu üye için bu dönemde zaten aidat kaydı bulunmaktadır");
         }
         
+        // Tutar null kontrolü
+        BigDecimal tahakkukTutari = donem.getTutar() != null ? donem.getTutar() : BigDecimal.ZERO;
+        if (tahakkukTutari.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("Aidat tutarı belirlenemeyen döneme atama yapılamaz. Lütfen dönem tutarını belirleyin.");
+        }
+        
         Aidat aidat = Aidat.builder()
             .uye(uye)
             .aidatDonemi(donem)
             .birlik(uye.getBirlik())
             .tahakkukTarihi(LocalDate.now())
-            .tahakkukTutari(donem.getTutar())
-            .toplamBorc(donem.getTutar())
-            .kalanBorc(donem.getTutar())
+            .tahakkukTutari(tahakkukTutari)
+            .toplamBorc(tahakkukTutari)
+            .kalanBorc(tahakkukTutari)
             .odenenTutar(BigDecimal.ZERO)
             .gecikmeFaizi(BigDecimal.ZERO)
             .aidatDurum(AidatDurum.BEKLIYOR)

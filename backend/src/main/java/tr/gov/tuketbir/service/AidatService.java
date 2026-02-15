@@ -18,11 +18,17 @@ import tr.gov.tuketbir.exception.ResourceNotFoundException;
 import tr.gov.tuketbir.mapper.AidatMapper;
 import tr.gov.tuketbir.repository.*;
 
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 
 /**
  * Aidat Service
@@ -736,5 +742,331 @@ public class AidatService {
         return tahsilatlar.stream()
             .map(aidatMapper::toTahsilatDTO)
             .toList();
+    }
+
+    // ======================= Excel Import İşlemleri =======================
+
+    /**
+     * Excel şablon dosyası oluştur (dönem import için)
+     */
+    public byte[] generateDonemImportTemplate() {
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Dönem Şablonu");
+
+            // Header stili
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 11);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setBorderBottom(BorderStyle.THIN);
+
+            // Açıklama satırı
+            CellStyle infoStyle = workbook.createCellStyle();
+            Font infoFont = workbook.createFont();
+            infoFont.setItalic(true);
+            infoFont.setColor(IndexedColors.GREY_50_PERCENT.getIndex());
+            infoStyle.setFont(infoFont);
+
+            // Header
+            String[] headers = {
+                "Dönem Kodu*", "Dönem Adı*", "Birlik ID*", "Dönem Tipi*",
+                "Yıl*", "Başlangıç Tarihi*", "Bitiş Tarihi*", "Son Ödeme Tarihi*",
+                "Aidat Tutarı", "Merkez Pay Oranı (%)", "Gecikme Faizi Oranı (%)", "Açıklama"
+            };
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // Açıklama satırları
+            String[] explanations = {
+                "Benzersiz kod (ör: 2026-YILLIK)", "Dönem açıklayıcı adı", "Birlik numarası (DB ID)",
+                "YILLIK veya ALTI_AYLIK", "Dönem yılı (ör: 2026)",
+                "GG.AA.YYYY", "GG.AA.YYYY", "GG.AA.YYYY",
+                "Alt birlik için zorunlu", "Merkez birlik için zorunlu (ör: 10)",
+                "Aylık gecikme oranı (ör: 2)", "İsteğe bağlı"
+            };
+            Row infoRow = sheet.createRow(1);
+            for (int i = 0; i < explanations.length; i++) {
+                Cell cell = infoRow.createCell(i);
+                cell.setCellValue(explanations[i]);
+                cell.setCellStyle(infoStyle);
+            }
+
+            // Örnek veri satırı
+            Row exampleRow = sheet.createRow(2);
+            exampleRow.createCell(0).setCellValue("2026-YILLIK");
+            exampleRow.createCell(1).setCellValue("2026 Yılı Yıllık Aidat");
+            exampleRow.createCell(2).setCellValue(2);
+            exampleRow.createCell(3).setCellValue("YILLIK");
+            exampleRow.createCell(4).setCellValue(2026);
+            exampleRow.createCell(5).setCellValue("01.01.2026");
+            exampleRow.createCell(6).setCellValue("31.12.2026");
+            exampleRow.createCell(7).setCellValue("31.03.2026");
+            exampleRow.createCell(8).setCellValue(1500.00);
+            exampleRow.createCell(9).setCellValue("");
+            exampleRow.createCell(10).setCellValue(2);
+            exampleRow.createCell(11).setCellValue("Yıllık aidat dönemi");
+
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            workbook.write(outputStream);
+            return outputStream.toByteArray();
+        } catch (Exception e) {
+            log.error("Error generating donem import template", e);
+            throw new BusinessException("Şablon dosyası oluşturulurken hata oluştu");
+        }
+    }
+
+    /**
+     * Excel'den aidat dönemlerini toplu import et
+     * Birlik bazlı import yapılabilir
+     */
+    @Transactional
+    public Map<String, Object> importDonemlerFromExcel(MultipartFile file, Long defaultBirlikId) {
+        log.info("Importing aidat donemleri from Excel, defaultBirlikId: {}", defaultBirlikId);
+
+        List<String> errors = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        int successCount = 0;
+        int skippedCount = 0;
+        int rowNumber = 0;
+
+        DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+
+        try (InputStream is = file.getInputStream();
+             Workbook workbook = WorkbookFactory.create(is)) {
+
+            Sheet sheet = workbook.getSheetAt(0);
+            int lastRowNum = sheet.getLastRowNum();
+
+            // İlk 2 satır header+açıklama, 3. satırdan itibaren veri
+            for (int i = 2; i <= lastRowNum; i++) {
+                Row row = sheet.getRow(i);
+                rowNumber = i + 1; // 1-based for user display
+
+                if (row == null || isRowEmpty(row)) {
+                    continue;
+                }
+
+                try {
+                    String donemKodu = getCellStringValue(row.getCell(0));
+                    String donemAdi = getCellStringValue(row.getCell(1));
+                    Long birlikId = getCellLongValue(row.getCell(2));
+                    String donemTipiStr = getCellStringValue(row.getCell(3));
+                    Integer yil = getCellIntValue(row.getCell(4));
+                    String baslangicStr = getCellStringValue(row.getCell(5));
+                    String bitisStr = getCellStringValue(row.getCell(6));
+                    String sonOdemeStr = getCellStringValue(row.getCell(7));
+                    BigDecimal tutar = getCellBigDecimalValue(row.getCell(8));
+                    BigDecimal merkezPayOrani = getCellBigDecimalValue(row.getCell(9));
+                    BigDecimal gecikmeFaiziOrani = getCellBigDecimalValue(row.getCell(10));
+                    String aciklama = getCellStringValue(row.getCell(11));
+
+                    // Birlik ID: Excel'den veya default
+                    if (birlikId == null) {
+                        birlikId = defaultBirlikId;
+                    }
+
+                    // Validasyon
+                    List<String> rowErrors = new ArrayList<>();
+                    if (donemKodu == null || donemKodu.isBlank()) rowErrors.add("Dönem kodu boş");
+                    if (donemAdi == null || donemAdi.isBlank()) rowErrors.add("Dönem adı boş");
+                    if (donemTipiStr == null || donemTipiStr.isBlank()) rowErrors.add("Dönem tipi boş");
+                    if (yil == null) rowErrors.add("Yıl boş");
+                    if (baslangicStr == null || baslangicStr.isBlank()) rowErrors.add("Başlangıç tarihi boş");
+                    if (bitisStr == null || bitisStr.isBlank()) rowErrors.add("Bitiş tarihi boş");
+                    if (sonOdemeStr == null || sonOdemeStr.isBlank()) rowErrors.add("Son ödeme tarihi boş");
+
+                    if (!rowErrors.isEmpty()) {
+                        errors.add("Satır " + rowNumber + ": " + String.join(", ", rowErrors));
+                        continue;
+                    }
+
+                    // Dönem tipi parse
+                    tr.gov.tuketbir.domain.enums.DonemTipi donemTipi;
+                    try {
+                        donemTipi = tr.gov.tuketbir.domain.enums.DonemTipi.valueOf(donemTipiStr.trim().toUpperCase());
+                    } catch (IllegalArgumentException e) {
+                        errors.add("Satır " + rowNumber + ": Geçersiz dönem tipi: " + donemTipiStr + " (YILLIK veya ALTI_AYLIK olmalı)");
+                        continue;
+                    }
+
+                    // Tarih parse
+                    LocalDate baslangicTarihi, bitisTarihi, sonOdemeTarihi;
+                    try {
+                        baslangicTarihi = LocalDate.parse(baslangicStr.trim(), dateFormat);
+                        bitisTarihi = LocalDate.parse(bitisStr.trim(), dateFormat);
+                        sonOdemeTarihi = LocalDate.parse(sonOdemeStr.trim(), dateFormat);
+                    } catch (Exception e) {
+                        errors.add("Satır " + rowNumber + ": Tarih formatı hatalı (GG.AA.YYYY olmalı)");
+                        continue;
+                    }
+
+                    // Mükerrer dönem kodu kontrolü
+                    if (aidatDonemiRepository.existsByDonemKodu(donemKodu.trim())) {
+                        warnings.add("Satır " + rowNumber + ": '" + donemKodu + "' dönem kodu zaten mevcut, atlandı");
+                        skippedCount++;
+                        continue;
+                    }
+
+                    // Mükerrer dönem adı kontrolü
+                    if (aidatDonemiRepository.existsByDonemAdi(donemAdi.trim())) {
+                        warnings.add("Satır " + rowNumber + ": '" + donemAdi + "' dönem adı zaten mevcut, atlandı");
+                        skippedCount++;
+                        continue;
+                    }
+
+                    // Birlik bulma
+                    Birlik birlik = null;
+                    boolean merkezBirlikTarafindan = false;
+                    if (birlikId != null) {
+                        birlik = birlikRepository.findById(birlikId).orElse(null);
+                        if (birlik == null) {
+                            errors.add("Satır " + rowNumber + ": Birlik bulunamadı, ID: " + birlikId);
+                            continue;
+                        }
+                        merkezBirlikTarafindan = BirlikTipi.MERKEZ.equals(birlik.getBirlikTipi());
+                    }
+
+                    // Tutar / Pay oranı validasyonu
+                    if (merkezBirlikTarafindan) {
+                        if (merkezPayOrani == null || merkezPayOrani.compareTo(BigDecimal.ZERO) <= 0) {
+                            errors.add("Satır " + rowNumber + ": Merkez birlik dönemi için pay oranı zorunludur");
+                            continue;
+                        }
+                        tutar = null; // Merkez birlik için tutar kullanılmaz
+                    } else {
+                        if (tutar == null || tutar.compareTo(BigDecimal.ZERO) <= 0) {
+                            errors.add("Satır " + rowNumber + ": Alt birlik dönemi için aidat tutarı zorunludur");
+                            continue;
+                        }
+                        merkezPayOrani = null; // Alt birlik için pay oranı kullanılmaz
+                    }
+
+                    // Entity oluştur
+                    AidatDonemi donem = AidatDonemi.builder()
+                        .donemKodu(donemKodu.trim())
+                        .donemAdi(donemAdi.trim())
+                        .birlik(birlik)
+                        .donemTipi(donemTipi)
+                        .yil(yil)
+                        .baslangicTarihi(baslangicTarihi)
+                        .bitisTarihi(bitisTarihi)
+                        .sonOdemeTarihi(sonOdemeTarihi)
+                        .tutar(tutar)
+                        .merkezPayOrani(merkezPayOrani)
+                        .gecikmeFaiziOrani(gecikmeFaiziOrani != null ? gecikmeFaiziOrani : BigDecimal.ZERO)
+                        .aciklama(aciklama)
+                        .donemAktif(true)
+                        .build();
+
+                    donem.setTenantId(birlik != null ? birlik.getId() : 0L);
+                    aidatDonemiRepository.save(donem);
+                    successCount++;
+
+                    log.debug("Imported donem: {} for birlik: {}", donemKodu, birlikId);
+
+                } catch (Exception e) {
+                    errors.add("Satır " + rowNumber + ": Beklenmeyen hata - " + e.getMessage());
+                    log.error("Error importing row {}", rowNumber, e);
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Error reading Excel file", e);
+            throw new BusinessException("Excel dosyası okunamadı: " + e.getMessage());
+        }
+
+        auditLogService.log("DONEM_EXCEL_IMPORT",
+            String.format("Excel'den %d dönem import edildi (%d atlandı, %d hata)", successCount, skippedCount, errors.size()));
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("basarili", successCount);
+        result.put("atlanan", skippedCount);
+        result.put("hatali", errors.size());
+        result.put("toplam", successCount + skippedCount + errors.size());
+        result.put("hatalar", errors);
+        result.put("uyarilar", warnings);
+        return result;
+    }
+
+    // ======================= Excel Yardımcı Metodlar =======================
+
+    private boolean isRowEmpty(Row row) {
+        for (int c = 0; c < 8; c++) {
+            Cell cell = row.getCell(c);
+            if (cell != null && cell.getCellType() != CellType.BLANK) {
+                String val = getCellStringValue(cell);
+                if (val != null && !val.isBlank()) return false;
+            }
+        }
+        return true;
+    }
+
+    private String getCellStringValue(Cell cell) {
+        if (cell == null) return null;
+        return switch (cell.getCellType()) {
+            case STRING -> cell.getStringCellValue().trim();
+            case NUMERIC -> {
+                if (DateUtil.isCellDateFormatted(cell)) {
+                    yield cell.getLocalDateTimeCellValue().toLocalDate()
+                        .format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
+                }
+                double val = cell.getNumericCellValue();
+                if (val == Math.floor(val) && !Double.isInfinite(val)) {
+                    yield String.valueOf((long) val);
+                }
+                yield String.valueOf(val);
+            }
+            case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
+            case FORMULA -> cell.getStringCellValue();
+            default -> null;
+        };
+    }
+
+    private Long getCellLongValue(Cell cell) {
+        if (cell == null) return null;
+        try {
+            return switch (cell.getCellType()) {
+                case NUMERIC -> (long) cell.getNumericCellValue();
+                case STRING -> {
+                    String val = cell.getStringCellValue().trim();
+                    yield val.isEmpty() ? null : Long.parseLong(val);
+                }
+                default -> null;
+            };
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Integer getCellIntValue(Cell cell) {
+        Long val = getCellLongValue(cell);
+        return val != null ? val.intValue() : null;
+    }
+
+    private BigDecimal getCellBigDecimalValue(Cell cell) {
+        if (cell == null) return null;
+        try {
+            return switch (cell.getCellType()) {
+                case NUMERIC -> BigDecimal.valueOf(cell.getNumericCellValue());
+                case STRING -> {
+                    String val = cell.getStringCellValue().trim().replace(",", ".");
+                    yield val.isEmpty() ? null : new BigDecimal(val);
+                }
+                default -> null;
+            };
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }

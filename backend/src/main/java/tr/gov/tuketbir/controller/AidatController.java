@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import tr.gov.tuketbir.dto.aidat.*;
 import tr.gov.tuketbir.dto.common.ApiResponse;
 import tr.gov.tuketbir.dto.common.PagedResponse;
@@ -264,5 +265,44 @@ public class AidatController {
                 .header("Content-Disposition", "attachment; filename=aidatlar.xlsx")
                 .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 .body(excelData);
+    }
+
+    // ==================== Dönem Excel Import İşlemleri ====================
+
+    @GetMapping("/donemler/import/template")
+    @Operation(summary = "Dönem import şablonu", description = "Excel import şablon dosyasını indir")
+    @PreAuthorize("hasAnyAuthority('PERM_AIDAT_CREATE')")
+    public ResponseEntity<byte[]> downloadDonemImportTemplate() {
+        log.info("Downloading donem import template");
+        byte[] template = aidatService.generateDonemImportTemplate();
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=donem_import_sablonu.xlsx")
+                .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .body(template);
+    }
+
+    @PostMapping("/donemler/import/excel")
+    @Operation(summary = "Excel'den dönem import", description = "Excel dosyasından toplu dönem tanımlama")
+    @PreAuthorize("hasAnyAuthority('PERM_AIDAT_CREATE')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> importDonemlerFromExcel(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "birlikId", required = false) Long birlikId) {
+        
+        log.info("Importing donemleri from Excel, birlikId: {}", birlikId);
+        
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Dosya boş"));
+        }
+        
+        String filename = file.getOriginalFilename();
+        if (filename == null || (!filename.endsWith(".xlsx") && !filename.endsWith(".xls"))) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Geçersiz dosya formatı. Sadece .xlsx ve .xls kabul edilir"));
+        }
+        
+        Map<String, Object> result = aidatService.importDonemlerFromExcel(file, birlikId);
+        int basarili = (int) result.get("basarili");
+        return ResponseEntity.ok(ApiResponse.success(result, basarili + " dönem başarıyla import edildi"));
     }
 }
